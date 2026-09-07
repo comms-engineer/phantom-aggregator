@@ -21,8 +21,11 @@ from app.fetchers.cyber_kev import CyberKevFetcher
 from app.fetchers.json_api import JsonApiFetcher
 from app.fetchers.rss_news import RssNewsFetcher
 from app.fetchers.space_weather import SpaceWeatherFetcher
+from app.fetchers.system_health import SystemHealthFetcher
 from app.fetchers.text_feed import TextFeedFetcher
 from app.renderers.nomadnet import NomadNetRenderer
+from app.services.alerter import CriticalEventAlerter
+from app.services.cleaner import StorageCleaner
 from app.services.llm_enrichment import LLMEnricher
 from app.source_config import SourceConfigLoader, SourceDefinition
 
@@ -36,6 +39,9 @@ scheduler = AsyncIOScheduler()
 renderer = NomadNetRenderer()
 llm_enricher = LLMEnricher()
 source_loader = SourceConfigLoader(settings.sources_config_path)
+storage_cleaner = StorageCleaner()
+critical_alerter = CriticalEventAlerter()
+system_health_fetcher = SystemHealthFetcher(raw_dir=settings.raw_dir, data_dir=settings.data_dir)
 last_runs: dict[str, datetime] = {}
 sync_lock = asyncio.Lock()
 
@@ -121,7 +127,7 @@ async def _summarize_source(source: SourceDefinition, payload: dict[str, Any]) -
     return llm_enricher.fallback_text(raw_text)
 
 
-async def _refresh_source(source: SourceDefinition) -> None:
+async def _refresh_source(source: SourceDefinition) -> dict[str, Any]:
     fetcher = _build_fetcher(source)
     payload = await fetcher.fetch()
     summary = await _summarize_source(source, payload)
@@ -134,6 +140,7 @@ async def _refresh_source(source: SourceDefinition) -> None:
     await fetcher.save_raw(snapshot)
     last_runs[source.id] = datetime.now(UTC)
     logger.info("Updated source %s -> %s", source.id, _raw_snapshot_path(source.id))
+    return snapshot
 
 
 def _load_snapshot(source_id: str) -> dict[str, Any] | None:
@@ -175,12 +182,18 @@ def _render_pages() -> None:
     for source in document.enabled_sources():
         grouped[source.nomadnet_page].append((source, _load_snapshot(source.id)))
 
-    active_pages = set(grouped.keys())
+    active_pages = set(grouped.keys()) | {settings.system_health_page_name}
     _cleanup_stale_pages(active_pages)
 
     for page_name, snapshots in grouped.items():
         renderer.write_page(page_name, renderer.render_dynamic_page(page_name, snapshots))
     renderer.write_dynamic_index(document.enabled_sources())
+
+
+async def _refresh_system_health() -> None:
+    payload = await system_health_fetcher.fetch()
+    await system_health_fetcher.save_raw(payload)
+    renderer.write_page(settings.system_health_page_name, renderer.render_system_health(payload))
 
 
 async def sync_sources(*, force: bool = False) -> None:
@@ -194,7 +207,10 @@ async def sync_sources(*, force: bool = False) -> None:
             for source, result in zip(due_sources, results, strict=False):
                 if isinstance(result, Exception):
                     logger.error("Source refresh failed for %s: %s", source.id, result)
+                    continue
+                await critical_alerter.process_snapshot(source, result)
 
+        await _refresh_system_health()
         _render_pages()
 
 
@@ -204,6 +220,14 @@ async def lifespan(_: FastAPI):
     settings.nomadnet_dir.mkdir(parents=True, exist_ok=True)
     settings.config_dir.mkdir(parents=True, exist_ok=True)
 
+    scheduler.add_job(
+        storage_cleaner.run,
+        trigger="interval",
+        days=1,
+        max_instances=1,
+        coalesce=True,
+        id="storage_cleaner",
+    )
     scheduler.add_job(
         sync_sources,
         trigger="interval",
