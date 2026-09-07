@@ -28,7 +28,7 @@ class SystemHealthFetcher(BaseFetcher):
         name: str | None = None,
     ) -> None:
         self.raw_dir = raw_dir or settings.raw_dir
-        self.data_dir = data_dir or settings.data_dir
+        self.data_dir = data_dir or settings.runtime_data_dir
         self.connectivity_host = connectivity_host or settings.internet_connectivity_host
         self.connectivity_port = connectivity_port or settings.internet_connectivity_port
         self.mesh_interface_names = tuple(name.lower() for name in (mesh_interface_names or settings.mesh_interface_names))
@@ -36,6 +36,7 @@ class SystemHealthFetcher(BaseFetcher):
 
     async def fetch(self) -> dict[str, Any]:
         memory = psutil.virtual_memory()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         storage = psutil.disk_usage(str(self.data_dir))
         cpu_usage = round(psutil.cpu_percent(interval=0.1), 1)
         cpu_temp = self._read_cpu_temperature()

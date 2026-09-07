@@ -41,7 +41,11 @@ llm_enricher = LLMEnricher()
 source_loader = SourceConfigLoader(settings.sources_config_path)
 storage_cleaner = StorageCleaner()
 critical_alerter = CriticalEventAlerter()
-system_health_fetcher = SystemHealthFetcher(raw_dir=settings.raw_dir, data_dir=settings.data_dir)
+system_health_fetcher = SystemHealthFetcher(
+    raw_dir=settings.raw_dir,
+    data_dir=settings.runtime_data_dir,
+    name=settings.system_health_snapshot_name,
+)
 last_runs: dict[str, datetime] = {}
 sync_lock = asyncio.Lock()
 

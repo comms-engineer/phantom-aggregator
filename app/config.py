@@ -76,6 +76,10 @@ class Settings(BaseSettings):
         return self._resolve_runtime_dir(self.data_dir, "data") / "nomadnet"
 
     @property
+    def runtime_data_dir(self) -> Path:
+        return self._resolve_runtime_dir(self.data_dir, "data")
+
+    @property
     def nomadnet_pages_dir(self) -> Path:
         return self.nomadnet_dir
 
