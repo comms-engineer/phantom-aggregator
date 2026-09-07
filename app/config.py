@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 10
     source_sync_interval_seconds: int = 60
     raw_data_max_age_days: int = 14
+    fetch_full_articles: bool = True
+    max_articles_per_feed: int = 5
+    article_request_delay_seconds: int = 2
     system_health_page_name: str = "system.page"
     system_health_snapshot_name: str = "system_health"
     critical_alert_k_index_threshold: int = 5
@@ -72,8 +75,16 @@ class Settings(BaseSettings):
         return self._resolve_runtime_dir(self.data_dir, "data") / "raw"
 
     @property
+    def raw_articles_dir(self) -> Path:
+        return self.raw_dir / "articles"
+
+    @property
     def nomadnet_dir(self) -> Path:
         return self._resolve_runtime_dir(self.data_dir, "data") / "nomadnet"
+
+    @property
+    def nomadnet_articles_dir(self) -> Path:
+        return self.nomadnet_dir / "articles"
 
     @property
     def runtime_data_dir(self) -> Path:

@@ -11,6 +11,8 @@
       "poll_interval_mins": 30,
       "llm_summarize": true,
       "nomadnet_page": "space.page",
+      "fetch_full_articles": false,
+      "max_articles_per_feed": 5,
       "options": {
         "parser": "space_weather_swpc",
         "solar_flux_url": "https://services.swpc.noaa.gov/products/summary/10cm-flux.json",
@@ -27,6 +29,8 @@
       "poll_interval_mins": 360,
       "llm_summarize": true,
       "nomadnet_page": "cyber.page",
+      "fetch_full_articles": false,
+      "max_articles_per_feed": 5,
       "options": {
         "parser": "cisa_kev"
       }
@@ -40,7 +44,9 @@
       "enabled": true,
       "poll_interval_mins": 60,
       "llm_summarize": true,
-      "nomadnet_page": "news.page"
+      "nomadnet_page": "news.page",
+      "fetch_full_articles": true,
+      "max_articles_per_feed": 5
     },
     {
       "id": "usgs_earthquakes",
@@ -51,7 +57,9 @@
       "enabled": true,
       "poll_interval_mins": 60,
       "llm_summarize": true,
-      "nomadnet_page": "weather.page"
+      "nomadnet_page": "weather.page",
+      "fetch_full_articles": false,
+      "max_articles_per_feed": 5
     }
   ]
 }
