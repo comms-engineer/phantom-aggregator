@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import inspect
 import json
 import logging
 from collections import defaultdict
@@ -14,6 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from app.config import settings
+from app.fetchers.base import BaseFetcher
 from app.fetchers.cyber_kev import CyberKevFetcher
 from app.fetchers.json_api import JsonApiFetcher
 from app.fetchers.rss_news import RssNewsFetcher
@@ -41,7 +44,58 @@ def _raw_snapshot_path(source_id: str) -> Path:
     return settings.raw_dir / f"{source_id}.json"
 
 
+def _build_custom_fetcher(fetcher_ref: str, source: SourceDefinition) -> BaseFetcher:
+    module_path, separator, class_name = fetcher_ref.partition(":")
+    if not separator or not module_path.strip() or not class_name.strip():
+        raise ValueError(f"Invalid custom fetcher reference for {source.id}: {fetcher_ref}")
+
+    module = importlib.import_module(module_path.strip())
+    fetcher_cls = getattr(module, class_name.strip(), None)
+    if not isinstance(fetcher_cls, type) or not issubclass(fetcher_cls, BaseFetcher):
+        raise TypeError(f"{fetcher_ref} is not a BaseFetcher subclass")
+
+    candidate_kwargs: dict[str, Any] = {
+        "url": source.url,
+        "source_url": source.url,
+        "source_name": source.name,
+        "raw_dir": settings.raw_dir,
+        "name": source.id,
+        "options": source.options,
+    }
+
+    signature = inspect.signature(fetcher_cls.__init__)
+    accepts_var_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+    init_kwargs: dict[str, Any] = {}
+    for parameter_name, parameter in signature.parameters.items():
+        if parameter_name == "self":
+            continue
+        if parameter_name in candidate_kwargs:
+            init_kwargs[parameter_name] = candidate_kwargs[parameter_name]
+            continue
+        if parameter.default is inspect.Parameter.empty:
+            raise TypeError(
+                f"Custom fetcher {fetcher_ref} has unsupported required constructor "
+                f"argument: {parameter_name}"
+            )
+
+    if accepts_var_kwargs:
+        for key, value in candidate_kwargs.items():
+            init_kwargs.setdefault(key, value)
+
+    fetcher = fetcher_cls(**init_kwargs)
+    if not isinstance(fetcher, BaseFetcher):
+        raise TypeError(f"{fetcher_ref} did not create a BaseFetcher instance")
+    return fetcher
+
+
 def _build_fetcher(source: SourceDefinition) -> Any:
+    custom_fetcher = source.options.get("custom_fetcher")
+    if isinstance(custom_fetcher, str) and custom_fetcher.strip():
+        return _build_custom_fetcher(custom_fetcher, source)
+
     parser = source.options.get("parser")
     if parser == "space_weather_swpc":
         return SpaceWeatherFetcher(
