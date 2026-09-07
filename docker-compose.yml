@@ -1,0 +1,13 @@
+services:
+  phantom-aggregator:
+    build: .
+    container_name: phantom-aggregator
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8080:8080"
