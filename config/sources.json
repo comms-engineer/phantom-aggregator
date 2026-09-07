@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "noaa_space_weather",
+      "name": "NOAA Space Weather",
+      "type": "json_api",
+      "category": "space",
+      "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
+      "enabled": true,
+      "poll_interval_mins": 30,
+      "llm_summarize": true,
+      "nomadnet_page": "space.page",
+      "options": {
+        "parser": "space_weather_swpc",
+        "solar_flux_url": "https://services.swpc.noaa.gov/products/summary/10cm-flux.json",
+        "forecast_url": "https://services.swpc.noaa.gov/products/noaa-geomagnetic-storm-forecast.json"
+      }
+    },
+    {
+      "id": "cisa_kev",
+      "name": "CISA Known Exploited Vulnerabilities",
+      "type": "json_api",
+      "category": "cyber",
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+      "enabled": true,
+      "poll_interval_mins": 360,
+      "llm_summarize": true,
+      "nomadnet_page": "cyber.page",
+      "options": {
+        "parser": "cisa_kev"
+      }
+    },
+    {
+      "id": "bbc_world_news",
+      "name": "BBC World News",
+      "type": "rss",
+      "category": "news",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "enabled": true,
+      "poll_interval_mins": 60,
+      "llm_summarize": true,
+      "nomadnet_page": "news.page"
+    },
+    {
+      "id": "usgs_earthquakes",
+      "name": "USGS Significant Earthquakes",
+      "type": "atom",
+      "category": "weather",
+      "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_month.atom",
+      "enabled": true,
+      "poll_interval_mins": 60,
+      "llm_summarize": true,
+      "nomadnet_page": "weather.page"
+    }
+  ]
+}

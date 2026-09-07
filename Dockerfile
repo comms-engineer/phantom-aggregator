@@ -9,8 +9,10 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app /app/app
+COPY cli /app/cli
+COPY config /app/config
 COPY data /app/data
 
-VOLUME ["/app/data"]
+VOLUME ["/app/data", "/app/config"]
 
 CMD ["python", "-m", "app.main"]

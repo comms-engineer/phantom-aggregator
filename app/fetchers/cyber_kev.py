@@ -17,9 +17,12 @@ class CyberKevFetcher(BaseFetcher):
 
     name = "cyber_kev"
 
-    def __init__(self, raw_dir: Path | None = None, source_url: str | None = None) -> None:
+    def __init__(self, raw_dir: Path | None = None, source_url: str | None = None, name: str | None = None) -> None:
         self.raw_dir = raw_dir or settings.raw_dir
-        self.source_url = source_url or settings.cisa_kev_url
+        if not source_url:
+            raise ValueError("source_url is required for CyberKevFetcher")
+        self.source_url = source_url
+        self.name = name or self.__class__.name
 
     async def fetch(self) -> dict[str, Any]:
         timeout = aiohttp.ClientTimeout(total=settings.request_timeout_seconds)

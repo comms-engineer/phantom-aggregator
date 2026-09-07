@@ -33,9 +33,10 @@ class RssNewsFetcher(BaseFetcher):
 
     name = "rss_news"
 
-    def __init__(self, raw_dir: Path | None = None, feeds: list[str] | None = None) -> None:
+    def __init__(self, raw_dir: Path | None = None, feeds: list[str] | None = None, name: str | None = None) -> None:
         self.raw_dir = raw_dir or settings.raw_dir
-        self.feeds = feeds or settings.rss_feed_urls
+        self.feeds = feeds or []
+        self.name = name or self.__class__.name
 
     async def fetch(self) -> dict[str, Any]:
         timeout = aiohttp.ClientTimeout(total=settings.request_timeout_seconds)

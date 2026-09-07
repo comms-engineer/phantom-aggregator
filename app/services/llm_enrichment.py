@@ -29,7 +29,7 @@ class LLMEnricher:
         if not input_text:
             return "No content available."
         if not self.enabled:
-            return self._fallback(input_text)
+            return self.fallback_text(input_text)
 
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
@@ -39,10 +39,10 @@ class LLMEnricher:
                     response.raise_for_status()
                     body = await response.json()
             summary = self._extract_response_text(body)
-            return summary or self._fallback(input_text)
+            return summary or self.fallback_text(input_text)
         except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
             logger.warning("LLM enrichment failed for %s: %s", context_type, exc)
-            return self._fallback(input_text)
+            return self.fallback_text(input_text)
 
     def _request_payload(self, input_text: str, context_type: str) -> dict[str, Any]:
         system_prompt = (
@@ -85,7 +85,7 @@ class LLMEnricher:
                     return first["text"].strip()
         return ""
 
-    def _fallback(self, text: str, limit: int = 1800) -> str:
+    def fallback_text(self, text: str, limit: int = 1800) -> str:
         truncated = " ".join(text.split())
         if len(truncated) <= limit:
             return truncated
