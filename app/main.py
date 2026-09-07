@@ -139,7 +139,7 @@ async def sync_sources(*, force: bool = False) -> None:
             results = await asyncio.gather(*[_refresh_source(source) for source in due_sources], return_exceptions=True)
             for source, result in zip(due_sources, results, strict=False):
                 if isinstance(result, Exception):
-                    logger.exception("Source refresh failed for %s", source.id, exc_info=result)
+                    logger.error("Source refresh failed for %s: %s", source.id, result)
 
         _render_pages()
 

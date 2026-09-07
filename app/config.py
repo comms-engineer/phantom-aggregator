@@ -25,12 +25,25 @@ class Settings(BaseSettings):
     nomadnet_max_lines: int = 80
 
     @property
+    def project_root(self) -> Path:
+        return Path(__file__).resolve().parents[1]
+
+    def _resolve_runtime_dir(self, configured: Path, local_name: str) -> Path:
+        local_path = self.project_root / local_name
+        default_container_path = Path(f"/app/{local_name}")
+        if configured != default_container_path:
+            return configured
+        if configured.exists() or not local_path.exists():
+            return configured
+        return local_path
+
+    @property
     def raw_dir(self) -> Path:
-        return self.data_dir / "raw"
+        return self._resolve_runtime_dir(self.data_dir, "data") / "raw"
 
     @property
     def nomadnet_dir(self) -> Path:
-        return self.data_dir / "nomadnet"
+        return self._resolve_runtime_dir(self.data_dir, "data") / "nomadnet"
 
     @property
     def nomadnet_pages_dir(self) -> Path:
@@ -38,7 +51,7 @@ class Settings(BaseSettings):
 
     @property
     def sources_config_path(self) -> Path:
-        return self.config_dir / "sources.json"
+        return self._resolve_runtime_dir(self.config_dir, "config") / "sources.json"
 
 
 settings = Settings()
