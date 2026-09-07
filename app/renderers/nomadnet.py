@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -10,22 +11,102 @@ class NomadNetRenderer:
     """Renders normalized feed payloads into lightweight NomadNet-friendly text."""
 
     def __init__(self, output_dir: Path | None = None) -> None:
-        self.output_dir = output_dir or settings.nomadnet_pages_dir
+        self.output_dir = output_dir or settings.nomadnet_dir
 
-    def render_space_weather(self, payload: dict[str, Any]) -> str:
-        latest = payload.get("latest") or {}
+    def render_space_weather(self, payload: dict[str, Any], summary: str) -> str:
+        normalized = payload.get("normalized", {}) if isinstance(payload, dict) else {}
         lines = [
-            "# SPACE WEATHER",
-            f"Updated: {payload.get('fetched_at', 'unknown')}",
-            f"Records: {payload.get('record_count', 0)}",
+            "== SPACE WEATHER BRIEF ==",
+            "----------------------------------------",
+            f"Updated: {normalized.get('updated', payload.get('fetched_at', 'unknown'))}",
+            f"SFI: {normalized.get('sfi', 0)}",
+            f"Planetary K-Index: {normalized.get('k_index', 0)}",
+            f"Geomagnetic Storm Risk: {normalized.get('geomagnetic_storm', 'UNKNOWN')}",
             "",
-            f"Observed: {latest.get('time_tag', 'n/a')}",
-            f"K-Index: {latest.get('k_index', 'n/a')}",
-            f"A-Index: {latest.get('a_running_24hr', 'n/a')}",
-            f"Station Count: {latest.get('station_count', 'n/a')}",
-            f"NOAA Scale: {latest.get('noaa_scale', 'n/a')}",
+            "Summary:",
+            summary,
             "",
             "Source: NOAA SWPC",
+        ]
+        return self._normalize(lines)
+
+    def render_cyber_kev(self, payload: dict[str, Any], summary: str) -> str:
+        rows = payload.get("latest_five", []) if isinstance(payload, dict) else []
+        lines = [
+            "== CYBER THREAT BRIEF ==",
+            "----------------------------------------",
+            f"Catalog Size: {payload.get('count_total', 0)}",
+            f"Updated: {payload.get('fetched_at', 'unknown')}",
+            "",
+            "Latest Known Exploited Vulnerabilities:",
+        ]
+        if not rows:
+            lines.append("- No recent KEV entries available.")
+        for entry in rows[:5]:
+            lines.append(
+                f"- {entry.get('cveID', 'n/a')} | {entry.get('vendorProject', 'n/a')} | "
+                f"{entry.get('vulnerabilityName', 'n/a')} ({entry.get('dateAdded', 'n/a')})"
+            )
+
+        lines.extend(["", "Summary:", summary, "", "Source: CISA KEV"])
+        return self._normalize(lines)
+
+    def render_news(self, payload: dict[str, Any], summary: str) -> str:
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        lines = [
+            "== NEWS BRIEF ==",
+            "----------------------------------------",
+            f"Updated: {payload.get('fetched_at', 'unknown')}",
+            f"Feed Count: {payload.get('source_count', 0)}",
+            "",
+            "Top Headlines:",
+        ]
+        if not items:
+            lines.append("- No news items available.")
+        for item in items[:10]:
+            lines.append(f"- {item.get('title', 'Untitled')} [{item.get('source', 'unknown')}]")
+            if item.get("published"):
+                lines.append(f"  {item['published']}")
+
+        lines.extend(["", "Summary:", summary])
+        return self._normalize(lines)
+
+    def render_weather(self, payload: dict[str, Any], summary: str) -> str:
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        weather_items = [
+            item
+            for item in items
+            if any(
+                keyword in f"{item.get('title', '')} {item.get('body', '')}".lower()
+                for keyword in ("weather", "storm", "alert", "flood", "hurricane", "tornado")
+            )
+        ]
+        lines = [
+            "== WEATHER ALERT BRIEF ==",
+            "----------------------------------------",
+            f"Updated: {payload.get('fetched_at', 'unknown')}",
+            "",
+            "Recent Weather/Alert Headlines:",
+        ]
+        if not weather_items:
+            lines.append("- No weather-related alerts detected in configured feeds.")
+        for item in weather_items[:10]:
+            lines.append(f"- {item.get('title', 'Untitled')} [{item.get('source', 'unknown')}]")
+            if item.get("published"):
+                lines.append(f"  {item['published']}")
+        lines.extend(["", "Summary:", summary])
+        return self._normalize(lines)
+
+    def render_index(self) -> str:
+        lines = [
+            "== PHANTOM AGGREGATOR INDEX ==",
+            "----------------------------------------",
+            "=> weather.page Weather Alerts Brief",
+            "=> space.page Space Weather Brief",
+            "=> cyber.page Cyber Threat Brief",
+            "=> news.page News Brief",
+            "",
+            "Generated by phantom-aggregator",
         ]
         return self._normalize(lines)
 
@@ -35,7 +116,22 @@ class NomadNetRenderer:
         path.write_text(content, encoding="utf-8")
         return path
 
+    def write_index(self) -> Path:
+        return self.write_page("index.mu", self.render_index())
+
     def _normalize(self, lines: list[str]) -> str:
-        line_limit = settings.nomadnet_line_limit
-        normalized = [line[:line_limit] for line in lines]
+        max_width = min(max(settings.nomadnet_line_limit, 72), 80)
+        normalized: list[str] = []
+        for line in lines:
+            if not line:
+                normalized.append("")
+                continue
+            wrapped = textwrap.wrap(
+                line,
+                width=max_width,
+                break_long_words=False,
+                break_on_hyphens=False,
+                replace_whitespace=False,
+            )
+            normalized.extend(wrapped or [""])
         return "\n".join(normalized[: settings.nomadnet_max_lines]).strip() + "\n"
