@@ -30,6 +30,8 @@ class SourceDefinition(BaseModel):
     poll_interval_mins: int = Field(default=60, ge=1)
     llm_summarize: bool = True
     nomadnet_page: str
+    fetch_full_articles: bool | None = None
+    max_articles_per_feed: int | None = Field(default=None, ge=1)
     options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("id")

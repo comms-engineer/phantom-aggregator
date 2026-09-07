@@ -89,11 +89,13 @@ class RssNewsFetcher(BaseFetcher):
             title = self._extract_text(item, ("title",)) or "Untitled"
             published = self._extract_text(item, ("pubDate", "published", "updated")) or ""
             raw_body = self._extract_text(item, ("description", "content", "content:encoded")) or ""
+            link = self._extract_text(item, ("link",)) or ""
             items.append(
                 {
                     "title": title.strip(),
                     "published": published.strip(),
                     "source": feed_title.strip(),
+                    "link": link.strip(),
                     "body": self._strip_html(raw_body),
                 }
             )
@@ -106,11 +108,13 @@ class RssNewsFetcher(BaseFetcher):
             title = self._extract_text(entry, ("title",)) or "Untitled"
             published = self._extract_text(entry, ("published", "updated")) or ""
             raw_body = self._extract_text(entry, ("content", "summary")) or ""
+            link = self._extract_link(entry)
             items.append(
                 {
                     "title": title.strip(),
                     "published": published.strip(),
                     "source": feed_title.strip(),
+                    "link": link.strip(),
                     "body": self._strip_html(raw_body),
                 }
             )
@@ -126,6 +130,16 @@ class RssNewsFetcher(BaseFetcher):
 
     def _local_name(self, tag: str) -> str:
         return tag.rsplit("}", 1)[-1]
+
+    def _extract_link(self, entry: ET.Element) -> str:
+        for child in list(entry):
+            if self._local_name(child.tag).lower() != "link":
+                continue
+            href = child.attrib.get("href", "").strip()
+            rel = child.attrib.get("rel", "alternate").strip().lower()
+            if href and rel in {"", "alternate"}:
+                return href
+        return self._extract_text(entry, ("link",)) or ""
 
     def _strip_html(self, value: str) -> str:
         parser = _HTMLStripper()

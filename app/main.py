@@ -25,6 +25,7 @@ from app.fetchers.system_health import SystemHealthFetcher
 from app.fetchers.text_feed import TextFeedFetcher
 from app.renderers.nomadnet import NomadNetRenderer
 from app.services.alerter import CriticalEventAlerter
+from app.services.article_extractor import ArticleExtractorService
 from app.services.cleaner import StorageCleaner
 from app.services.llm_enrichment import LLMEnricher
 from app.source_config import SourceConfigLoader, SourceDefinition
@@ -41,6 +42,7 @@ llm_enricher = LLMEnricher()
 source_loader = SourceConfigLoader(settings.sources_config_path)
 storage_cleaner = StorageCleaner()
 critical_alerter = CriticalEventAlerter()
+article_extractor = ArticleExtractorService()
 system_health_fetcher = SystemHealthFetcher(
     raw_dir=settings.raw_dir,
     data_dir=settings.runtime_data_dir,
@@ -134,6 +136,12 @@ async def _summarize_source(source: SourceDefinition, payload: dict[str, Any]) -
 async def _refresh_source(source: SourceDefinition) -> dict[str, Any]:
     fetcher = _build_fetcher(source)
     payload = await fetcher.fetch()
+    if isinstance(payload.get("items"), list):
+        payload["items"] = await article_extractor.enrich_items(
+            payload["items"],
+            enabled=_full_article_fetch_enabled(source),
+            max_articles=_max_articles_per_feed(source),
+        )
     summary = await _summarize_source(source, payload)
     snapshot = {
         "source": source.model_dump(mode="json"),
@@ -180,6 +188,16 @@ def _cleanup_stale_pages(active_pages: set[str]) -> None:
             page_path.unlink(missing_ok=True)
 
 
+def _full_article_fetch_enabled(source: SourceDefinition) -> bool:
+    if source.fetch_full_articles is not None:
+        return source.fetch_full_articles
+    return settings.fetch_full_articles and source.category in {"news", "cyber"}
+
+
+def _max_articles_per_feed(source: SourceDefinition) -> int:
+    return source.max_articles_per_feed or settings.max_articles_per_feed
+
+
 def _render_pages() -> None:
     document = source_loader.load()
     grouped: dict[str, list[tuple[SourceDefinition, dict[str, Any] | None]]] = defaultdict(list)
@@ -221,7 +239,9 @@ async def sync_sources(*, force: bool = False) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
+    settings.raw_articles_dir.mkdir(parents=True, exist_ok=True)
     settings.nomadnet_dir.mkdir(parents=True, exist_ok=True)
+    settings.nomadnet_articles_dir.mkdir(parents=True, exist_ok=True)
     settings.config_dir.mkdir(parents=True, exist_ok=True)
 
     scheduler.add_job(

@@ -17,6 +17,8 @@ class StorageCleaner:
 
     def __init__(self, raw_dir: Path | None = None, retention_days: int | None = None) -> None:
         self.raw_dir = raw_dir or settings.raw_dir
+        self.raw_articles_dir = settings.raw_articles_dir
+        self.nomadnet_articles_dir = settings.nomadnet_articles_dir
         self.retention_days = retention_days or settings.raw_data_max_age_days
 
     async def run(self) -> dict[str, Any]:
@@ -25,9 +27,13 @@ class StorageCleaner:
     def _cleanup(self) -> dict[str, Any]:
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         json_files = [path for path in self.raw_dir.glob("*.json") if path.is_file()]
+        article_json_files = [path for path in self.raw_articles_dir.glob("*.json") if path.is_file()]
+        article_pages = [path for path in self.nomadnet_articles_dir.glob("*.mu") if path.is_file()]
         retained_paths = self._latest_files_by_group(json_files)
         cutoff = datetime.now(UTC) - timedelta(days=self.retention_days)
         deleted: list[str] = []
+        deleted_article_json: list[str] = []
+        deleted_article_pages: list[str] = []
 
         for path in json_files:
             if path in retained_paths:
@@ -38,11 +44,16 @@ class StorageCleaner:
             path.unlink(missing_ok=True)
             deleted.append(path.name)
 
+        deleted_article_json.extend(self._delete_expired(article_json_files, cutoff))
+        deleted_article_pages.extend(self._delete_expired(article_pages, cutoff))
+
         return {
             "ran_at": datetime.now(UTC).isoformat(),
             "retention_days": self.retention_days,
             "cutoff": cutoff.isoformat(),
             "deleted_files": deleted,
+            "deleted_article_json": deleted_article_json,
+            "deleted_article_pages": deleted_article_pages,
             "retained_files": sorted(path.name for path in retained_paths),
         }
 
@@ -60,3 +71,13 @@ class StorageCleaner:
         stem = path.stem
         normalized = self._TIMESTAMP_SUFFIX.sub("", stem)
         return normalized or stem
+
+    def _delete_expired(self, files: list[Path], cutoff: datetime) -> list[str]:
+        deleted: list[str] = []
+        for path in files:
+            modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            if modified_at >= cutoff:
+                continue
+            path.unlink(missing_ok=True)
+            deleted.append(path.name)
+        return deleted

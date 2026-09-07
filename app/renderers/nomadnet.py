@@ -68,6 +68,12 @@ class NomadNetRenderer:
             lines.append(f"- {item.get('title', 'Untitled')} [{item.get('source', 'unknown')}]")
             if item.get("published"):
                 lines.append(f"  {item['published']}")
+            brief = self._item_brief(item)
+            if brief:
+                lines.append(f"  Brief: {brief}")
+            article_page = item.get("article_page")
+            if article_page:
+                lines.append(f"  _`[Read Full Article`{article_page}]`_")
 
         lines.extend(["", "Summary:", summary])
         return self._normalize(lines)
@@ -95,6 +101,12 @@ class NomadNetRenderer:
             lines.append(f"- {item.get('title', 'Untitled')} [{item.get('source', 'unknown')}]")
             if item.get("published"):
                 lines.append(f"  {item['published']}")
+            brief = self._item_brief(item)
+            if brief:
+                lines.append(f"  Brief: {brief}")
+            article_page = item.get("article_page")
+            if article_page:
+                lines.append(f"  _`[Read Full Article`{article_page}]`_")
         lines.extend(["", "Summary:", summary])
         return self._normalize(lines)
 
@@ -231,6 +243,12 @@ class NomadNetRenderer:
                 lines.append(f"- {item.get('title', 'Untitled')}")
                 if item.get("published"):
                     lines.append(f"  {item['published']}")
+                brief = self._item_brief(item)
+                if brief:
+                    lines.append(f"  Brief: {brief}")
+                article_page = item.get("article_page")
+                if article_page:
+                    lines.append(f"  _`[Read Full Article`{article_page}]`_")
         elif source.type == "text_feed":
             lines.append(f"Line Count: {payload.get('line_count', 0)}")
             lines.append("Preview:")
@@ -255,6 +273,9 @@ class NomadNetRenderer:
             if not line:
                 normalized.append("")
                 continue
+            if self._is_micron_link(line):
+                normalized.append(line)
+                continue
             wrapped = textwrap.wrap(
                 line,
                 width=max_width,
@@ -264,3 +285,15 @@ class NomadNetRenderer:
             )
             normalized.extend(wrapped or [""])
         return "\n".join(normalized[: settings.nomadnet_max_lines]).strip() + "\n"
+
+    def _item_brief(self, item: dict[str, Any]) -> str:
+        brief = " ".join(str(item.get("body", "")).split())
+        if not brief:
+            return ""
+        if len(brief) <= 220:
+            return brief
+        return brief[:217].rstrip() + "..."
+
+    def _is_micron_link(self, line: str) -> bool:
+        stripped = line.lstrip()
+        return stripped.startswith("_`[") and stripped.endswith("]`_")
