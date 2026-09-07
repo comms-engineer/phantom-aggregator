@@ -17,11 +17,20 @@ class SpaceWeatherFetcher(BaseFetcher):
 
     name = "space_weather"
 
-    def __init__(self, raw_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        raw_dir: Path | None = None,
+        *,
+        k_index_url: str,
+        solar_flux_url: str,
+        forecast_url: str,
+        name: str | None = None,
+    ) -> None:
         self.raw_dir = raw_dir or settings.raw_dir
-        self.k_index_url = settings.space_weather_k_index_url
-        self.solar_flux_url = settings.space_weather_solar_flux_url
-        self.forecast_url = settings.space_weather_forecast_url
+        self.k_index_url = k_index_url
+        self.solar_flux_url = solar_flux_url
+        self.forecast_url = forecast_url
+        self.name = name or self.__class__.name
 
     async def fetch(self) -> dict[str, Any]:
         timeout = aiohttp.ClientTimeout(total=settings.request_timeout_seconds)

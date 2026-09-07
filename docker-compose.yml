@@ -9,5 +9,6 @@ services:
       DATA_DIR: /app/data
     volumes:
       - ./data:/app/data
+      - ./config:/app/config
     ports:
       - "8080:8080"
