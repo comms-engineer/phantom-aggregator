@@ -248,3 +248,13 @@ Tuple-style settings can be provided as JSON arrays in `.env`.
 - `docs/SOURCE_DISCOVERY_GUIDE.md`
 - `docs/ADDING_NON_TRADITIONAL_SOURCES.md`
 - `templates/SOURCE_ADAPTER_PROMPT.md`
+
+## To Add
+
+- localized services such as pulsepoint, watchduty, etc
+- AI-based assessment of news trends to identify crises and spin up event tracking pages
+- methodology for users to scope LLM work based on specific location, situations, and PIRs
+- find publicly available intelligence analysis guides to help guide LLMs. 
+- ingestion of telegram channels
+- export of key data elements to CoT tracks distributed over TAK
+- ???
