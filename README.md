@@ -245,6 +245,6 @@ Tuple-style settings can be provided as JSON arrays in `.env`.
 
 ## Related docs
 
-- `/home/runner/work/phantom-aggregator/phantom-aggregator/docs/SOURCE_DISCOVERY_GUIDE.md`
-- `/home/runner/work/phantom-aggregator/phantom-aggregator/docs/ADDING_NON_TRADITIONAL_SOURCES.md`
-- `/home/runner/work/phantom-aggregator/phantom-aggregator/templates/SOURCE_ADAPTER_PROMPT.md`
+- `docs/SOURCE_DISCOVERY_GUIDE.md`
+- `docs/ADDING_NON_TRADITIONAL_SOURCES.md`
+- `templates/SOURCE_ADAPTER_PROMPT.md`
