@@ -8,9 +8,11 @@ It runs as a FastAPI service with scheduled sync jobs. Source definitions are lo
 
 - Fetches RSS, Atom, JSON API, and plain-text sources
 - Supports parser-specific handlers for NOAA SWPC and CISA KEV
+- Includes disaster-focused custom fetchers for FEMA, NHC, wildfires, flooding, and earthquakes
 - Optionally summarizes snapshots with a local LLM endpoint
 - Optionally extracts full article pages from feed links
 - Renders NomadNet pages plus an index page
+- Renders a dedicated emergency situational-awareness page (`emergencies.page`)
 - Captures system telemetry and renders a system status page
 - Evaluates snapshots for critical events and can send LXMF alerts
 - Cleans old raw snapshots on a daily retention schedule
@@ -125,6 +127,26 @@ Set:
 - `options.custom_fetcher = "app.fetchers.custom.<module>:<ClassName>"`
 
 The runtime imports the class dynamically and uses it as a `BaseFetcher` implementation.
+
+Built-in emergency custom fetchers use:
+
+- `app.fetchers.fema_alerts:FemaAlertsFetcher`
+- `app.fetchers.nhc_hurricanes:NhcHurricanesFetcher`
+- `app.fetchers.wildfires:WildfiresFetcher`
+- `app.fetchers.flooding_water:FloodingWaterFetcher`
+- `app.fetchers.earthquakes:EarthquakesFetcher`
+
+## Default emergency situational awareness sources
+
+The default `config/sources.json` includes active emergency sources on `emergencies.page`:
+
+- FEMA IPAWS + declaration summaries (`fema_alerts`, poll every 180m)
+- NHC tropical updates (`nhc_hurricanes`, poll every 60m)
+- InciWeb wildfire incidents (`wildfires_active`, poll every 120m)
+- USGS gauge + flood warnings (`flooding_water`, poll every 30m)
+- USGS earthquakes M4.5+ (`usgs_earthquakes`, poll every 15m)
+
+Emergency sources are preconfigured with `fetch_full_articles: true` where incident links are available so `/app/data/nomadnet/articles/` can carry deeper incident pages.
 
 ## CLI tools
 

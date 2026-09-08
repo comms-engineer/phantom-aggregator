@@ -49,17 +49,93 @@
       "max_articles_per_feed": 5
     },
     {
-      "id": "usgs_earthquakes",
-      "name": "USGS Significant Earthquakes",
-      "type": "atom",
+      "id": "fema_alerts",
+      "name": "FEMA Alerts and Declarations",
+      "type": "json_api",
       "category": "weather",
-      "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_month.atom",
+      "url": "https://apps.fema.gov/IPAWSOPEN_EAS_SERVICE/rest/rss/alerts",
+      "enabled": true,
+      "poll_interval_mins": 180,
+      "llm_summarize": true,
+      "nomadnet_page": "emergencies.page",
+      "fetch_full_articles": true,
+      "max_articles_per_feed": 5,
+      "options": {
+        "custom_fetcher": "app.fetchers.fema_alerts:FemaAlertsFetcher",
+        "declarations_api_url": "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries?$orderby=declarationDate%20desc&$top=100"
+      }
+    },
+    {
+      "id": "nhc_hurricanes",
+      "name": "NHC Tropical Cyclone Updates",
+      "type": "json_api",
+      "category": "weather",
+      "url": "https://www.nhc.noaa.gov/xml/TWOAT.xml",
       "enabled": true,
       "poll_interval_mins": 60,
       "llm_summarize": true,
-      "nomadnet_page": "weather.page",
+      "nomadnet_page": "emergencies.page",
+      "fetch_full_articles": true,
+      "max_articles_per_feed": 5,
+      "options": {
+        "custom_fetcher": "app.fetchers.nhc_hurricanes:NhcHurricanesFetcher",
+        "feed_urls": [
+          "https://www.nhc.noaa.gov/xml/TWOAT.xml",
+          "https://www.nhc.noaa.gov/xml/TWOEP.xml",
+          "https://www.nhc.noaa.gov/xml/TCPAT1.xml"
+        ]
+      }
+    },
+    {
+      "id": "wildfires_active",
+      "name": "InciWeb Active Wildfires",
+      "type": "json_api",
+      "category": "weather",
+      "url": "https://inciweb.wildfire.gov/inciweb/rss/feeds",
+      "enabled": true,
+      "poll_interval_mins": 120,
+      "llm_summarize": true,
+      "nomadnet_page": "emergencies.page",
+      "fetch_full_articles": true,
+      "max_articles_per_feed": 5,
+      "options": {
+        "custom_fetcher": "app.fetchers.wildfires:WildfiresFetcher"
+      }
+    },
+    {
+      "id": "flooding_water",
+      "name": "USGS and NOAA Flooding Alerts",
+      "type": "json_api",
+      "category": "weather",
+      "url": "https://api.weather.gov/alerts/active.atom",
+      "enabled": true,
+      "poll_interval_mins": 30,
+      "llm_summarize": true,
+      "nomadnet_page": "emergencies.page",
+      "fetch_full_articles": true,
+      "max_articles_per_feed": 5,
+      "options": {
+        "custom_fetcher": "app.fetchers.flooding_water:FloodingWaterFetcher",
+        "usgs_gauge_url": "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all",
+        "flood_stage_ft": 10.0
+      }
+    },
+    {
+      "id": "usgs_earthquakes",
+      "name": "USGS Earthquakes M4.5+",
+      "type": "json_api",
+      "category": "weather",
+      "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson",
+      "enabled": true,
+      "poll_interval_mins": 15,
+      "llm_summarize": true,
+      "nomadnet_page": "emergencies.page",
       "fetch_full_articles": false,
-      "max_articles_per_feed": 5
+      "max_articles_per_feed": 5,
+      "options": {
+        "custom_fetcher": "app.fetchers.earthquakes:EarthquakesFetcher",
+        "min_magnitude": 4.5
+      }
     }
   ]
 }
