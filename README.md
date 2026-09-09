@@ -12,7 +12,7 @@ It runs as a FastAPI service with scheduled sync jobs. Source definitions are lo
 - Optionally summarizes snapshots with a local LLM endpoint
 - Optionally extracts full article pages from feed links
 - Renders NomadNet pages plus an index page
-- Renders a dedicated emergency situational-awareness page (`emergencies.page`)
+- Renders a dedicated emergency situational-awareness page (`emergencies.mu`)
 - Captures system telemetry and renders a system status page
 - Evaluates snapshots for critical events and can send LXMF alerts
 - Cleans old raw snapshots on a daily retention schedule
@@ -138,7 +138,7 @@ Built-in emergency custom fetchers use:
 
 ## Default emergency situational awareness sources
 
-The default `config/sources.json` includes active emergency sources on `emergencies.page`:
+The default `config/sources.json` includes active emergency sources on `emergencies.mu`:
 
 - FEMA IPAWS + declaration summaries (`fema_alerts`, poll every 180m)
 - NHC tropical updates (`nhc_hurricanes`, poll every 60m)
@@ -222,7 +222,7 @@ Each sync cycle also captures:
 Outputs:
 
 - raw JSON snapshot: `data/raw/system_health.json`
-- NomadNet page: `data/nomadnet/system.page`
+- NomadNet page: `data/nomadnet/system.mu`
 
 ## Configuration reference
 
@@ -240,7 +240,7 @@ Environment variables are loaded from `.env`.
 | `FETCH_FULL_ARTICLES` | `true` | Global default for article extraction |
 | `MAX_ARTICLES_PER_FEED` | `5` | Global cap on extracted articles per source refresh |
 | `ARTICLE_REQUEST_DELAY_SECONDS` | `2` | Delay between article extraction requests |
-| `SYSTEM_HEALTH_PAGE_NAME` | `system.page` | Output filename for telemetry page |
+| `SYSTEM_HEALTH_PAGE_NAME` | `system.mu` | Output filename for telemetry page |
 | `SYSTEM_HEALTH_SNAPSHOT_NAME` | `system_health` | Raw snapshot basename for telemetry JSON |
 | `CRITICAL_ALERT_K_INDEX_THRESHOLD` | `5` | Threshold for geomagnetic storm alerts |
 | `CRITICAL_ALERT_KEYWORDS` | built-in keyword tuple | Keywords for critical alert matching |

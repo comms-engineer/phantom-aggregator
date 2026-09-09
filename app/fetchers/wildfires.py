@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import re
+import zipfile
 from datetime import UTC, datetime
 from html import unescape
 from html.parser import HTMLParser
@@ -47,31 +49,168 @@ class WildfiresFetcher(BaseFetcher):
         if not self.feed_url:
             raise ValueError("source_url or url is required for WildfiresFetcher")
         self.options = options or {}
+        defaults = [
+            "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/c6.1/FirespotArea_usa_contiguous_and_hawaii_c6.1_24h.kmz",
+            "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/suomi-npp-viirs-c2/FirespotArea_usa_contiguous_and_hawaii_suomi-npp-viirs-c2_24h.kmz",
+            "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/noaa-20-viirs-c2/FirespotArea_usa_contiguous_and_hawaii_noaa-20-viirs-c2_24h.kmz",
+            "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/noaa-21-viirs-c2/FirespotArea_usa_contiguous_and_hawaii_noaa-21-viirs-c2_24h.kmz",
+            "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/landsat/FirespotArea_usa_contiguous_and_hawaii_landsat_24h.kmz",
+        ]
+        firms_urls = self.options.get("firms_urls", defaults)
+        self.firms_urls = [str(item).strip() for item in firms_urls if str(item).strip()]
         self.name = name or self.__class__.name
 
     async def fetch(self) -> dict[str, Any]:
         timeout = aiohttp.ClientTimeout(total=settings.request_timeout_seconds)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(self.feed_url) as response:
-                response.raise_for_status()
-                body = await response.text()
+            feed_task = self._fetch_text(session, self.feed_url)
+            firms_tasks = [self._fetch_firms_summary(session, url) for url in self.firms_urls]
+            feed_body, *firms_entries = await asyncio.gather(feed_task, *firms_tasks)
 
-        items = self._parse_feed(body)
+        incident_items = self._parse_feed(feed_body)
+        firms_items = [item for entry in firms_entries for item in self._build_firms_items(entry)]
+        items = self._correlate_and_dedupe(incident_items + firms_items)
         items.sort(key=self._sort_key, reverse=True)
 
         return {
             "fetched_at": datetime.now(UTC).isoformat(),
-            "source": self._source_name(self.feed_url),
+            "source": "InciWeb + NASA FIRMS",
             "url": self.feed_url,
+            "firms_urls": self.firms_urls,
             "item_count": len(items),
             "items": items[:120],
-            "raw": body,
+            "raw": {
+                "inciweb": feed_body,
+                "firms": firms_entries,
+            },
         }
 
     async def save_raw(self, payload: dict[str, Any]) -> None:
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         output_path = self.raw_dir / f"{self.name}.json"
         output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    async def _fetch_text(self, session: aiohttp.ClientSession, url: str) -> str:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return await response.text()
+
+    async def _fetch_firms_summary(self, session: aiohttp.ClientSession, url: str) -> dict[str, Any]:
+        try:
+            async with session.get(url) as response:
+                response.raise_for_status()
+                payload = await response.read()
+        except Exception:
+            return {"url": url, "sensor": self._sensor_name(url), "feature_count": 0, "error": "fetch_failed"}
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                names = [name for name in archive.namelist() if name.lower().endswith(".kml")]
+                if not names:
+                    return {"url": url, "sensor": self._sensor_name(url), "feature_count": 0, "error": "missing_kml"}
+                root = ET.fromstring(archive.read(names[0]))
+                count = len(root.findall(".//{*}Placemark"))
+                return {"url": url, "sensor": self._sensor_name(url), "feature_count": count, "error": None}
+        except Exception:
+            return {"url": url, "sensor": self._sensor_name(url), "feature_count": 0, "error": "invalid_kmz"}
+
+    def _build_firms_items(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
+        if not isinstance(summary, dict):
+            return []
+        count = int(summary.get("feature_count", 0) or 0)
+        if count <= 0:
+            return []
+        sensor = str(summary.get("sensor") or "NASA FIRMS").strip()
+        severity = "critical" if count >= 100 else "high" if count >= 25 else "medium"
+        rank = 6 if severity == "critical" else 5 if severity == "high" else 4
+        return [{
+            "title": f"NASA FIRMS active fire detections ({sensor})",
+            "published": datetime.now(UTC).isoformat(),
+            "source": "NASA FIRMS",
+            "link": str(summary.get("url", "")),
+            "body": f"{count} wildfire hotspot features were detected in the last 24 hours by {sensor}.",
+            "fire_name": sensor,
+            "event_type": "wildfire_hotspot",
+            "severity": severity,
+            "severity_rank": rank,
+            "incident_group": "wildfire",
+            "firms_sensor": sensor,
+            "firms_hotspot_count": count,
+        }]
+
+    def _sensor_name(self, url: str) -> str:
+        basename = url.rsplit("/", 1)[-1]
+        if "landsat" in url:
+            return "Landsat"
+        if "noaa-21" in url:
+            return "NOAA-21 VIIRS"
+        if "noaa-20" in url:
+            return "NOAA-20 VIIRS"
+        if "suomi-npp" in url:
+            return "S-NPP VIIRS"
+        if "c6.1" in url:
+            return "MODIS"
+        return basename
+
+    def _correlate_and_dedupe(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        incident_entries: list[dict[str, Any]] = []
+        standalone: list[dict[str, Any]] = []
+
+        for item in items:
+            if str(item.get("event_type", "")).lower() == "wildfire_hotspot":
+                standalone.append(item)
+                continue
+            incident_entries.append(item)
+
+        merged: list[dict[str, Any]] = []
+        for incident in incident_entries:
+            merged.append(incident)
+
+        for hotspot in standalone:
+            matched = None
+            hotspot_time = self._parse_date(hotspot.get("published"))
+            for incident in incident_entries:
+                incident_time = self._parse_date(incident.get("published"))
+                if abs((hotspot_time - incident_time).total_seconds()) <= 7 * 24 * 60 * 60:
+                    matched = incident
+                    break
+            if matched is None:
+                merged.append(hotspot)
+                continue
+            self._merge_correlated_item(matched, hotspot)
+
+        deduped: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in merged:
+            marker = f"{str(item.get('title',''))}|{str(item.get('published',''))}|{str(item.get('link',''))}"
+            if marker in seen:
+                continue
+            seen.add(marker)
+            deduped.append(item)
+        return deduped
+
+    def _incident_key(self, item: dict[str, Any]) -> str | None:
+        return None
+
+    def _merge_correlated_item(self, base: dict[str, Any], item: dict[str, Any]) -> None:
+        if item.get("event_type") == "wildfire_hotspot":
+            base["firms_hotspot_count"] = int(base.get("firms_hotspot_count", 0) or 0) + int(item.get("firms_hotspot_count", 0) or 0)
+            base["firms_sensors"] = sorted({
+                *str(base.get("firms_sensors", "")).split("|"),
+                *([str(item.get("firms_sensor", ""))] if item.get("firms_sensor") else []),
+            })
+            base["firms_sensors"] = "|".join(part for part in base["firms_sensors"] if part)
+            if int(item.get("severity_rank", 0) or 0) > int(base.get("severity_rank", 0) or 0):
+                base["severity_rank"] = int(item.get("severity_rank", 0) or 0)
+                base["severity"] = item.get("severity", base.get("severity", "medium"))
+            if not base.get("link"):
+                base["link"] = item.get("link", "")
+            base["body"] = f"{base.get('body', '')} | {item.get('body', '')}".strip(" | ")
+            return
+
+        if item.get("severity_rank", 0) and item.get("severity_rank", 0) > base.get("severity_rank", 0):
+            base["severity_rank"] = item.get("severity_rank", 0)
+            base["severity"] = item.get("severity", base.get("severity", "medium"))
 
     def _parse_feed(self, xml_text: str) -> list[dict[str, Any]]:
         root = ET.fromstring(xml_text)

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     fetch_full_articles: bool = True
     max_articles_per_feed: int = 5
     article_request_delay_seconds: int = 2
-    system_health_page_name: str = "system.page"
+    system_health_page_name: str = "system.mu"
     system_health_snapshot_name: str = "system_health"
     critical_alert_k_index_threshold: int = 5
     critical_alert_keywords: tuple[str, ...] = (

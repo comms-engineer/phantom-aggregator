@@ -183,9 +183,12 @@ def _is_due(source: SourceDefinition, now: datetime) -> bool:
 
 
 def _cleanup_stale_pages(active_pages: set[str]) -> None:
-    for page_path in settings.nomadnet_dir.glob("*.page"):
-        if page_path.name not in active_pages:
-            page_path.unlink(missing_ok=True)
+    for pattern in ("*.page", "*.mu"):
+        for page_path in settings.nomadnet_dir.glob(pattern):
+            if page_path.name == "index.mu":
+                continue
+            if page_path.name not in active_pages:
+                page_path.unlink(missing_ok=True)
 
 
 def _full_article_fetch_enabled(source: SourceDefinition) -> bool:

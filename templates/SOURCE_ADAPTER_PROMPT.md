@@ -58,7 +58,7 @@ The JSON block must follow this structure:
   "enabled": true,
   "poll_interval_mins": 60,
   "llm_summarize": true,
-  "nomadnet_page": "{{CATEGORY}}.page",
+  "nomadnet_page": "{{CATEGORY}}.mu",
   "options": {
     "custom_fetcher": "app.fetchers.custom.{{SOURCE_ID}}:{{CLASS_NAME}}"
   }

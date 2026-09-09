@@ -12,11 +12,11 @@ SourceType = Literal["rss", "atom", "json_api", "text_feed"]
 SourceCategory = Literal["weather", "space", "news", "cyber", "maritime"]
 
 DEFAULT_PAGE_BY_CATEGORY: dict[SourceCategory, str] = {
-    "weather": "weather.page",
-    "space": "space.page",
-    "news": "news.page",
-    "cyber": "cyber.page",
-    "maritime": "maritime.page",
+    "weather": "weather.mu",
+    "space": "space.mu",
+    "news": "news.mu",
+    "cyber": "cyber.mu",
+    "maritime": "maritime.mu",
 }
 
 

@@ -10,13 +10,13 @@
       "enabled": true,
       "poll_interval_mins": 30,
       "llm_summarize": true,
-      "nomadnet_page": "space.page",
+      "nomadnet_page": "space.mu",
       "fetch_full_articles": false,
       "max_articles_per_feed": 5,
       "options": {
         "parser": "space_weather_swpc",
-        "solar_flux_url": "https://services.swpc.noaa.gov/products/summary/10cm-flux.json",
-        "forecast_url": "https://services.swpc.noaa.gov/products/noaa-geomagnetic-storm-forecast.json"
+        "solar_flux_url": "https://services.swpc.noaa.gov/products/10cm-flux-30-day.json",
+        "forecast_url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"
       }
     },
     {
@@ -28,7 +28,7 @@
       "enabled": true,
       "poll_interval_mins": 360,
       "llm_summarize": true,
-      "nomadnet_page": "cyber.page",
+      "nomadnet_page": "cyber.mu",
       "fetch_full_articles": false,
       "max_articles_per_feed": 5,
       "options": {
@@ -44,7 +44,7 @@
       "enabled": true,
       "poll_interval_mins": 60,
       "llm_summarize": true,
-      "nomadnet_page": "news.page",
+      "nomadnet_page": "news.mu",
       "fetch_full_articles": true,
       "max_articles_per_feed": 5
     },
@@ -53,11 +53,11 @@
       "name": "FEMA Alerts and Declarations",
       "type": "json_api",
       "category": "weather",
-      "url": "https://apps.fema.gov/IPAWSOPEN_EAS_SERVICE/rest/rss/alerts",
+      "url": "https://www.fema.gov/api/open/v1/IpawsArchivedAlerts",
       "enabled": true,
       "poll_interval_mins": 180,
       "llm_summarize": true,
-      "nomadnet_page": "emergencies.page",
+      "nomadnet_page": "emergencies.mu",
       "fetch_full_articles": true,
       "max_articles_per_feed": 5,
       "options": {
@@ -74,7 +74,7 @@
       "enabled": true,
       "poll_interval_mins": 60,
       "llm_summarize": true,
-      "nomadnet_page": "emergencies.page",
+      "nomadnet_page": "emergencies.mu",
       "fetch_full_articles": true,
       "max_articles_per_feed": 5,
       "options": {
@@ -89,17 +89,24 @@
     {
       "id": "wildfires_active",
       "name": "InciWeb Active Wildfires",
-      "type": "json_api",
+      "type": "rss",
       "category": "weather",
-      "url": "https://inciweb.wildfire.gov/inciweb/rss/feeds",
+      "url": "https://inciweb.wildfire.gov/incidents/rss.xml",
       "enabled": true,
       "poll_interval_mins": 120,
       "llm_summarize": true,
-      "nomadnet_page": "emergencies.page",
+      "nomadnet_page": "emergencies.mu",
       "fetch_full_articles": true,
       "max_articles_per_feed": 5,
       "options": {
-        "custom_fetcher": "app.fetchers.wildfires:WildfiresFetcher"
+        "custom_fetcher": "app.fetchers.wildfires:WildfiresFetcher",
+        "firms_urls": [
+          "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/c6.1/FirespotArea_usa_contiguous_and_hawaii_c6.1_24h.kmz",
+          "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/suomi-npp-viirs-c2/FirespotArea_usa_contiguous_and_hawaii_suomi-npp-viirs-c2_24h.kmz",
+          "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/noaa-20-viirs-c2/FirespotArea_usa_contiguous_and_hawaii_noaa-20-viirs-c2_24h.kmz",
+          "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/noaa-21-viirs-c2/FirespotArea_usa_contiguous_and_hawaii_noaa-21-viirs-c2_24h.kmz",
+          "https://firms.modaps.eosdis.nasa.gov/api/kml_fire_footprints/usa_contiguous_and_hawaii/24h/landsat/FirespotArea_usa_contiguous_and_hawaii_landsat_24h.kmz"
+        ]
       }
     },
     {
@@ -111,12 +118,12 @@
       "enabled": true,
       "poll_interval_mins": 30,
       "llm_summarize": true,
-      "nomadnet_page": "emergencies.page",
+      "nomadnet_page": "emergencies.mu",
       "fetch_full_articles": true,
       "max_articles_per_feed": 5,
       "options": {
         "custom_fetcher": "app.fetchers.flooding_water:FloodingWaterFetcher",
-        "usgs_gauge_url": "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all",
+        "usgs_gauge_url": "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all&bBox=-125,24,-66,50&siteType=ST",
         "flood_stage_ft": 10.0
       }
     },
@@ -129,7 +136,7 @@
       "enabled": true,
       "poll_interval_mins": 15,
       "llm_summarize": true,
-      "nomadnet_page": "emergencies.page",
+      "nomadnet_page": "emergencies.mu",
       "fetch_full_articles": false,
       "max_articles_per_feed": 5,
       "options": {

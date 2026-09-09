@@ -67,7 +67,7 @@ class SpaceWeatherFetcher(BaseFetcher):
         )
 
     def _normalize_metrics(self, k_index_body: Any, solar_flux_body: Any, forecast_body: Any) -> dict[str, Any]:
-        k_index = self._extract_latest_int(k_index_body, ("k_index",))
+        k_index = self._extract_latest_int(k_index_body, ("k_index", "kp"))
         sfi = self._extract_latest_int(solar_flux_body, ("flux", "f10.7", "sfi", "observed_flux"))
         geomagnetic_storm = self._extract_geomagnetic_storm(forecast_body)
         updated = self._extract_latest_time(k_index_body, ("time_tag", "date", "time"))
@@ -106,35 +106,38 @@ class SpaceWeatherFetcher(BaseFetcher):
         if not records:
             return "UNKNOWN"
 
-        severity_levels = [
-            ("extreme", "G5"),
-            ("severe", "G4"),
-            ("strong", "G3"),
-            ("moderate", "G2"),
-            ("minor", "G1"),
-        ]
-        highest = "NONE"
-        highest_rank = -1
+        scale_rank = {"G1": 1, "G2": 2, "G3": 3, "G4": 4, "G5": 5}
+        highest_scale, highest_rank = "NONE", 0
+
         for record in records:
-            for rank, (_, label) in enumerate(reversed(severity_levels)):
-                for key, value in record.items():
-                    if label.lower() in key.lower():
-                        numeric = self._to_float(value)
-                        if numeric is not None and numeric > 0 and rank > highest_rank:
-                            highest_rank = rank
-                            highest = label
-        return highest
+            window = str(record.get("observed", "")).lower()
+            if window not in ("predicted", "estimated"):  # skip pure history rows
+                continue
+            scale = record.get("noaa_scale")
+            if not scale:
+                continue
+            rank = scale_rank.get(str(scale).upper(), 0)
+            if rank > highest_rank:
+                highest_rank, highest_scale = rank, str(scale).upper()
+
+        return highest_scale
 
     def _table_to_records(self, body: Any) -> list[dict[str, Any]]:
-        if not isinstance(body, list) or len(body) < 2 or not isinstance(body[0], list):
+        if not isinstance(body, list):
+            if isinstance(body, dict):
+                return [body]
+            return []
+        if not body:
             return []
 
-        headers = [str(item) for item in body[0]]
-        records: list[dict[str, Any]] = []
-        for row in body[1:]:
-            if isinstance(row, list):
-                records.append(dict(zip(headers, row)))
-        return records
+        if isinstance(body[0], dict):
+            return [row for row in body if isinstance(row, dict)]
+
+        if isinstance(body[0], list) and len(body) >= 2:
+            headers = [str(item) for item in body[0]]
+            return [dict(zip(headers, row)) for row in body[1:] if isinstance(row, list)]
+
+        return []
 
     def _get_first_numeric_value(self, record: dict[str, Any], candidate_fields: tuple[str, ...]) -> float | None:
         for field in candidate_fields:

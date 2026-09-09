@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -47,6 +47,10 @@ class FemaAlertsFetcher(BaseFetcher):
         self.feed_url = (source_url or url or "").strip()
         if not self.feed_url:
             raise ValueError("source_url or url is required for FemaAlertsFetcher")
+        if "$filter" not in self.feed_url.lower():
+            cutoff = (datetime.now(UTC) - timedelta(days=3)).strftime("%Y-%m-%dT00:00:00Z")
+            separator = "&" if "?" in self.feed_url else "?"
+            self.feed_url = f"{self.feed_url}{separator}$filter=sent ge '{cutoff}'&$orderby=sent desc&$top=200"
         self.options = options or {}
         self.declarations_api_url = str(
             self.options.get(
@@ -60,12 +64,12 @@ class FemaAlertsFetcher(BaseFetcher):
     async def fetch(self) -> dict[str, Any]:
         timeout = aiohttp.ClientTimeout(total=settings.request_timeout_seconds)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            feed_text, declarations_body = await asyncio.gather(
-                self._fetch_text(session, self.feed_url),
+            alerts_body, declarations_body = await asyncio.gather(
+                self._fetch_json(session, self.feed_url),
                 self._fetch_json(session, self.declarations_api_url),
             )
 
-        alert_items = self._parse_alert_feed(feed_text, self.feed_url)
+        alert_items = self._parse_ipaws_alerts(alerts_body)
         declaration_items = self._parse_declarations(declarations_body)
         items = sorted(alert_items + declaration_items, key=self._sort_key, reverse=True)
 
@@ -81,7 +85,7 @@ class FemaAlertsFetcher(BaseFetcher):
             },
             "items": items,
             "raw": {
-                "alerts_feed": feed_text,
+                "alerts_feed": alerts_body,
                 "declarations": declarations_body,
             },
         }
@@ -121,6 +125,48 @@ class FemaAlertsFetcher(BaseFetcher):
                     "source": self._source_name(feed_url),
                     "link": link,
                     "body": body,
+                    "event_type": event_type,
+                    "severity": severity,
+                    "severity_rank": rank,
+                    "incident_group": "fema_alert",
+                }
+            )
+        return items[:100]
+
+    def _parse_ipaws_alerts(self, body: Any) -> list[dict[str, Any]]:
+        if not isinstance(body, dict):
+            return []
+
+        records = body.get("IpawsArchivedAlerts")
+        if not isinstance(records, list):
+            return []
+
+        items: list[dict[str, Any]] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+
+            infos = record.get("info")
+            info = infos[0] if isinstance(infos, list) and infos and isinstance(infos[0], dict) else {}
+
+            title = str(info.get("headline") or info.get("event") or "FEMA Alert").strip()
+            body_text = self._strip_html(str(info.get("description") or info.get("instruction") or ""))
+            published = str(record.get("sent") or info.get("effective") or "")
+            event_type = str(info.get("event") or "civil-emergency")
+            severity, rank = self._severity_from_text(f"{title} {body_text} {event_type}")
+
+            areas = info.get("area")
+            area_desc = ""
+            if isinstance(areas, list) and areas and isinstance(areas[0], dict):
+                area_desc = str(areas[0].get("areaDesc", "")).strip()
+
+            items.append(
+                {
+                    "title": f"{title} ({area_desc})" if area_desc else title,
+                    "published": published,
+                    "source": "FEMA IPAWS",
+                    "link": "",
+                    "body": body_text,
                     "event_type": event_type,
                     "severity": severity,
                     "severity_rank": rank,
