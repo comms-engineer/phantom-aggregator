@@ -1,0 +1,13 @@
+# Runtime-generated data (raw snapshots, rendered NomadNet pages, extracted articles)
+/data/*
+!/data/.gitkeep
+
+# Local environment overrides
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/

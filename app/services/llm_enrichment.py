@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -8,6 +9,15 @@ import aiohttp
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Ollama on this CPU-only host processes one generation at a time; sending concurrent
+# requests causes all of them to queue and blow past even generous client timeouts.
+_llm_request_semaphore = asyncio.Semaphore(1)
+
+# CPU-bound prompt eval/generation is slow (~i5-6500T, no GPU); keep inputs and outputs
+# bounded so a summarization call reliably finishes instead of timing out.
+_MAX_INPUT_CHARS = 900
+_MAX_OUTPUT_TOKENS = 130
 
 
 class LLMEnricher:
@@ -30,14 +40,16 @@ class LLMEnricher:
             return "No content available."
         if not self.enabled:
             return self.fallback_text(input_text)
+        input_text = input_text[:_MAX_INPUT_CHARS]
 
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                payload = self._request_payload(input_text, context_type)
-                async with session.post(self.endpoint, json=payload) as response:
-                    response.raise_for_status()
-                    body = await response.json()
+            async with _llm_request_semaphore:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    payload = self._request_payload(input_text, context_type)
+                    async with session.post(self.endpoint, json=payload) as response:
+                        response.raise_for_status()
+                        body = await response.json()
             summary = self._extract_response_text(body)
             return summary or self.fallback_text(input_text)
         except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
@@ -58,6 +70,7 @@ class LLMEnricher:
                 "model": self.model,
                 "prompt": f"{system_prompt}\n\n{user_prompt}",
                 "stream": False,
+                "options": {"num_predict": _MAX_OUTPUT_TOKENS},
             }
 
         return {
@@ -67,6 +80,7 @@ class LLMEnricher:
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.2,
+            "max_tokens": _MAX_OUTPUT_TOKENS,
         }
 
     def _extract_response_text(self, body: Any) -> str:
