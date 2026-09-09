@@ -51,7 +51,7 @@ class FloodingWaterFetcher(BaseFetcher):
         self.usgs_url = str(
             self.options.get(
                 "usgs_gauge_url",
-                "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all&bBox=-125,24,-66,50&siteType=ST",
+                "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all&stateCd=CA&siteType=ST",
             )
         )
         self.flood_stage_ft = float(self.options.get("flood_stage_ft", 10.0))

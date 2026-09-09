@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import email.utils
 import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from app.config import settings
 from app.source_config import SourceDefinition, page_title
+
+# NomadNet's Micron parser treats any line starting with "-" as a horizontal
+# divider and discards the rest of the line, so list items must never start
+# with a bare hyphen. Use this bullet marker for all list content instead.
+_BULLET = "*"
 
 
 class NomadNetRenderer:
@@ -18,9 +25,9 @@ class NomadNetRenderer:
     def render_space_weather(self, payload: dict[str, Any], summary: str) -> str:
         normalized = payload.get("normalized", {}) if isinstance(payload, dict) else {}
         lines = [
-            "== SPACE WEATHER BRIEF ==",
-            "----------------------------------------",
-            f"Updated: {normalized.get('updated', payload.get('fetched_at', 'unknown'))}",
+            self._heading("Space Weather Brief"),
+            self._divider(),
+            f"Updated: {self._human_time(normalized.get('updated', payload.get('fetched_at', 'unknown')))}",
             f"SFI: {normalized.get('sfi', 0)}",
             f"Planetary K-Index: {normalized.get('k_index', 0)}",
             f"Geomagnetic Storm Risk: {normalized.get('geomagnetic_storm', 'UNKNOWN')}",
@@ -35,48 +42,40 @@ class NomadNetRenderer:
     def render_cyber_kev(self, payload: dict[str, Any], summary: str) -> str:
         rows = payload.get("latest_five", []) if isinstance(payload, dict) else []
         lines = [
-            "== CYBER THREAT BRIEF ==",
-            "----------------------------------------",
+            self._heading("Cyber Threat Brief"),
+            self._divider(),
             f"Catalog Size: {payload.get('count_total', 0)}",
-            f"Updated: {payload.get('fetched_at', 'unknown')}",
+            f"Updated: {self._human_time(payload.get('fetched_at', 'unknown'))}",
             "",
             "Latest Known Exploited Vulnerabilities:",
         ]
         if not rows:
-            lines.append("- No recent KEV entries available.")
+            lines.append(f"{_BULLET} No recent KEV entries available.")
         for entry in rows[:5]:
             lines.append(
-                f"- {entry.get('cveID', 'n/a')} | {entry.get('vendorProject', 'n/a')} | "
-                f"{entry.get('vulnerabilityName', 'n/a')} ({entry.get('dateAdded', 'n/a')})"
+                f"{_BULLET} {self._escape(entry.get('cveID', 'n/a'))} | {self._escape(entry.get('vendorProject', 'n/a'))} | "
+                f"{self._escape(entry.get('vulnerabilityName', 'n/a'))} ({entry.get('dateAdded', 'n/a')})"
             )
 
-        lines.extend(["", "Summary:", summary, "", "Source: CISA KEV"])
+        lines.extend(["", "Summary:", self._escape(summary), "", "Source: CISA KEV"])
         return self._normalize(lines)
 
     def render_news(self, payload: dict[str, Any], summary: str) -> str:
         items = payload.get("items", []) if isinstance(payload, dict) else []
         lines = [
-            "== NEWS BRIEF ==",
-            "----------------------------------------",
-            f"Updated: {payload.get('fetched_at', 'unknown')}",
+            self._heading("News Brief"),
+            self._divider(),
+            f"Updated: {self._human_time(payload.get('fetched_at', 'unknown'))}",
             f"Feed Count: {payload.get('source_count', 0)}",
             "",
             "Top Headlines:",
         ]
         if not items:
-            lines.append("- No news items available.")
+            lines.append(f"{_BULLET} No news items available.")
         for item in items[:10]:
-            lines.append(f"- {item.get('title', 'Untitled')} [{item.get('source', 'unknown')}]")
-            if item.get("published"):
-                lines.append(f"  {item['published']}")
-            brief = self._item_brief(item)
-            if brief:
-                lines.append(f"  Brief: {brief}")
-            article_page = item.get("article_page")
-            if article_page:
-                lines.append(f"  _`[Read Full Article`{article_page}]`_")
+            lines.extend(self._render_headline(item))
 
-        lines.extend(["", "Summary:", summary])
+        lines.extend(["", "Summary:", self._escape(summary)])
         return self._normalize(lines)
 
     def render_weather(self, payload: dict[str, Any], summary: str) -> str:
@@ -90,25 +89,17 @@ class NomadNetRenderer:
             )
         ]
         lines = [
-            "== WEATHER ALERT BRIEF ==",
-            "----------------------------------------",
-            f"Updated: {payload.get('fetched_at', 'unknown')}",
+            self._heading("Weather Alert Brief"),
+            self._divider(),
+            f"Updated: {self._human_time(payload.get('fetched_at', 'unknown'))}",
             "",
             "Recent Weather/Alert Headlines:",
         ]
         if not weather_items:
-            lines.append("- No weather-related alerts detected in configured feeds.")
+            lines.append(f"{_BULLET} No weather-related alerts detected in configured feeds.")
         for item in weather_items[:10]:
-            lines.append(f"- {item.get('title', 'Untitled')} [{item.get('source', 'unknown')}]")
-            if item.get("published"):
-                lines.append(f"  {item['published']}")
-            brief = self._item_brief(item)
-            if brief:
-                lines.append(f"  Brief: {brief}")
-            article_page = item.get("article_page")
-            if article_page:
-                lines.append(f"  _`[Read Full Article`{article_page}]`_")
-        lines.extend(["", "Summary:", summary])
+            lines.extend(self._render_headline(item))
+        lines.extend(["", "Summary:", self._escape(summary)])
         return self._normalize(lines)
 
     def render_index(self, pages: list[tuple[str, str]] | None = None) -> str:
@@ -120,12 +111,12 @@ class NomadNetRenderer:
             (settings.system_health_page_name, "System Telemetry"),
         ]
         lines = [
-            "== PHANTOM AGGREGATOR INDEX ==",
-            "----------------------------------------",
+            self._heading("Phantom Aggregator"),
+            self._divider(),
             "",
         ]
         for page_name, title in links:
-            lines.append(f"_`[{title}`{page_name}]`_")
+            lines.append(f"`_`[{title}`{self._local_page_url(page_name)}]`_`")
         lines.extend(["", "Generated by phantom-aggregator"])
         return self._normalize(lines)
 
@@ -161,26 +152,23 @@ class NomadNetRenderer:
         internet = connectivity.get("internet", {}) if isinstance(connectivity, dict) else {}
         mesh = connectivity.get("mesh", {}) if isinstance(connectivity, dict) else {}
         lines = [
-            "== SYSTEM TELEMETRY ==",
-            "----------------------------------------",
-            f"Updated: {payload.get('fetched_at', 'unknown')}",
-            f"CPU Usage: {cpu.get('usage_percent', 0)}%",
-            f"CPU Temp: {cpu.get('temperature_c', 'unavailable')} C",
-            f"RAM Usage: {memory.get('used_percent', 0)}%",
-            f"RAM Available: {memory.get('available_mb', 0)} MB",
-            f"Storage Free ({storage.get('path', '/app/data')}): {storage.get('free_gb', 0)} GB",
-            f"Storage Used: {storage.get('used_percent', 0)}%",
-            f"Internet Reachable: {internet.get('reachable', False)}",
-            f"Mesh Connected: {mesh.get('connected', False)}",
+            self._heading("System Telemetry"),
+            self._divider(),
+            f"Updated: {self._human_time(payload.get('fetched_at', 'unknown'))}",
+            f"CPU: {cpu.get('usage_percent', 0)}% used, {cpu.get('temperature_c', 'unavailable')} C",
+            f"RAM: {memory.get('used_percent', 0)}% used, {memory.get('available_mb', 0)} MB free",
+            f"Storage ({storage.get('path', '/app/data')}): {storage.get('used_percent', 0)}% used, "
+            f"{storage.get('free_gb', 0)} GB free",
+            f"Internet: {'reachable' if internet.get('reachable', False) else 'unreachable'}",
+            f"Mesh: {'connected' if mesh.get('connected', False) else 'disconnected'}",
         ]
         mesh_interfaces = mesh.get("interfaces", []) if isinstance(mesh, dict) else []
         if mesh_interfaces:
             lines.append("Mesh Interfaces:")
             for interface in mesh_interfaces[:5]:
-                lines.append(
-                    f"- {interface.get('name', 'unknown')} | up={interface.get('is_up', False)} | "
-                    f"addr={interface.get('has_address', False)}"
-                )
+                status = "up" if interface.get("is_up", False) else "down"
+                addr = "addressed" if interface.get("has_address", False) else "no address"
+                lines.append(f"{_BULLET} {interface.get('name', 'unknown')}: {status}, {addr}")
         lines.extend(["", "Generated by phantom-aggregator"])
         return self._normalize(lines)
 
@@ -193,8 +181,8 @@ class NomadNetRenderer:
             return self._render_emergency_page(page_name, source_snapshots)
         defined_sources = [source for source, _ in source_snapshots]
         lines = [
-            f"== {page_title(page_name, defined_sources).upper()} ==",
-            "----------------------------------------",
+            self._heading(page_title(page_name, defined_sources)),
+            self._divider(),
             "",
         ]
         if not source_snapshots:
@@ -204,14 +192,13 @@ class NomadNetRenderer:
         for index, (source, snapshot) in enumerate(source_snapshots):
             lines.extend(self._render_source_section(source, snapshot))
             if index < len(source_snapshots) - 1:
-                lines.extend(["", "----------------------------------------", ""])
+                lines.extend(["", self._divider(), ""])
         return self._normalize(lines)
 
     def _render_source_section(self, source: SourceDefinition, snapshot: dict[str, Any] | None) -> list[str]:
         lines = [
-            f"[{source.name}]",
-            f"Type: {source.type} | Category: {source.category}",
-            f"URL: {source.url}",
+            self._subheading(self._escape(source.name)),
+            f"{source.category.title()} feed \u00b7 {self._domain(source.url)}",
         ]
         if not snapshot:
             lines.append("Status: awaiting first successful fetch")
@@ -219,7 +206,7 @@ class NomadNetRenderer:
 
         payload = snapshot.get("payload", {}) if isinstance(snapshot, dict) else {}
         summary = snapshot.get("summary", "No summary available.") if isinstance(snapshot, dict) else "No summary available."
-        lines.append(f"Updated: {snapshot.get('fetched_at', payload.get('fetched_at', 'unknown'))}")
+        lines.append(f"Updated: {self._human_time(snapshot.get('fetched_at', payload.get('fetched_at', 'unknown')))}")
 
         parser = source.options.get("parser")
         if parser == "space_weather_swpc":
@@ -236,38 +223,44 @@ class NomadNetRenderer:
             lines.append("Latest Entries:")
             for entry in payload.get("latest_five", [])[:5]:
                 lines.append(
-                    f"- {entry.get('cveID', 'n/a')} | {entry.get('vendorProject', 'n/a')} | "
-                    f"{entry.get('vulnerabilityName', 'n/a')} ({entry.get('dateAdded', 'n/a')})"
+                    f"{_BULLET} {self._escape(entry.get('cveID', 'n/a'))} | {self._escape(entry.get('vendorProject', 'n/a'))} | "
+                    f"{self._escape(entry.get('vulnerabilityName', 'n/a'))} ({entry.get('dateAdded', 'n/a')})"
                 )
         elif source.type in {"rss", "atom"}:
             items = payload.get("items", []) if isinstance(payload, dict) else []
             lines.append(f"Items Available: {len(items)}")
             lines.append("Headlines:")
             for item in items[:5]:
-                lines.append(f"- {item.get('title', 'Untitled')}")
-                if item.get("published"):
-                    lines.append(f"  {item['published']}")
-                brief = self._item_brief(item)
-                if brief:
-                    lines.append(f"  Brief: {brief}")
-                article_page = item.get("article_page")
-                if article_page:
-                    lines.append(f"  _`[Read Full Article`{article_page}]`_")
+                lines.extend(self._render_headline(item))
         elif source.type == "text_feed":
             lines.append(f"Line Count: {payload.get('line_count', 0)}")
             lines.append("Preview:")
             for line in payload.get("lines", [])[:5]:
-                lines.append(f"- {line}")
+                lines.append(f"{_BULLET} {self._escape(line)}")
         else:
             preview = payload.get("preview", {}) if isinstance(payload, dict) else {}
             lines.append("Preview:")
             if isinstance(preview, dict):
                 for key, value in list(preview.items())[:5]:
-                    lines.append(f"- {key}: {value}")
+                    lines.append(f"{_BULLET} {self._escape(key)}: {self._escape(value)}")
             else:
-                lines.append(f"- {preview}")
+                lines.append(f"{_BULLET} {self._escape(preview)}")
 
-        lines.extend(["", "Summary:", summary])
+        lines.extend(["", "Summary:", self._escape(summary)])
+        return lines
+
+    def _render_headline(self, item: dict[str, Any]) -> list[str]:
+        title = self._escape(item.get("title", "Untitled"))
+        source_name = self._escape(item.get("source", "unknown"))
+        lines = [f"{_BULLET} {title} [{source_name}]"]
+        if item.get("published"):
+            lines.append(f"  {self._human_time(item['published'])}")
+        brief = self._item_brief(item)
+        if brief:
+            lines.append(f"  Brief: {self._escape(brief)}")
+        article_page = item.get("article_page")
+        if article_page:
+            lines.append(f"  `_`[Read Full Article`{self._local_page_url(article_page)}]`_`")
         return lines
 
     def _is_emergency_page(self, page_name: str) -> bool:
@@ -279,17 +272,18 @@ class NomadNetRenderer:
         source_snapshots: list[tuple[SourceDefinition, dict[str, Any] | None]],
     ) -> str:
         lines = [
-            "== ACTIVE DISASTER & INCIDENT BRIEFS ==",
-            "----------------------------------------",
+            self._heading("Active Disaster & Incident Briefs"),
+            self._divider(),
         ]
         all_items: list[dict[str, Any]] = []
         source_status: list[str] = []
         for source, snapshot in source_snapshots:
             if not snapshot:
-                source_status.append(f"- {source.name}: awaiting first successful fetch")
+                source_status.append(f"{_BULLET} {source.name}: awaiting first successful fetch")
                 continue
             payload = snapshot.get("payload", {}) if isinstance(snapshot, dict) else {}
-            source_status.append(f"- {source.name}: {snapshot.get('fetched_at', payload.get('fetched_at', 'unknown'))}")
+            updated = self._human_time(snapshot.get("fetched_at", payload.get("fetched_at", "unknown")))
+            source_status.append(f"{_BULLET} {source.name}: {updated}")
             payload_items = payload.get("items", []) if isinstance(payload, dict) else []
             if not isinstance(payload_items, list):
                 continue
@@ -314,17 +308,19 @@ class NomadNetRenderer:
 
         sorted_items = sorted(all_items, key=self._emergency_sort_key, reverse=True)
         for item in sorted_items[:20]:
-            lines.append(f"- [{str(item.get('severity', 'info')).upper()}] {item.get('title', 'Untitled Incident')}")
-            lines.append(f"  Source: {item.get('source', 'unknown')}")
+            severity = str(item.get("severity", "info")).upper()
+            title = self._escape(item.get("title", "Untitled Incident"))
+            lines.append(f"{_BULLET} [{severity}] {title}")
+            lines.append(f"  Source: {self._escape(item.get('source', 'unknown'))}")
             published = item.get("published")
             if published:
-                lines.append(f"  Updated: {published}")
+                lines.append(f"  Updated: {self._human_time(published)}")
             details = self._item_brief(item)
             if details:
-                lines.append(f"  Details: {details}")
+                lines.append(f"  Details: {self._escape(details)}")
             article_page = item.get("article_page")
             if article_page:
-                lines.append(f"  _`[Read Full Incident Brief`{article_page}]`_")
+                lines.append(f"  `_`[Read Full Incident Brief`{self._local_page_url(article_page)}]`_`")
             lines.append("")
 
         lines.append("Generated by phantom-aggregator")
@@ -352,6 +348,45 @@ class NomadNetRenderer:
         except ValueError:
             return datetime(1970, 1, 1, tzinfo=UTC)
 
+    def _human_time(self, value: Any) -> str:
+        """Render a timestamp (ISO-8601 or RFC-2822) as a short, readable UTC string."""
+        if not value or str(value).lower() == "unknown":
+            return "unknown"
+        text = str(value)
+        parsed: datetime | None = None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                parsed = email.utils.parsedate_to_datetime(text)
+            except (TypeError, ValueError):
+                parsed = None
+        if parsed is None:
+            return text
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+    def _domain(self, url: str) -> str:
+        try:
+            host = urlparse(str(url)).netloc
+        except ValueError:
+            host = ""
+        return host.removeprefix("www.") or str(url)
+
+    def _escape(self, text: Any) -> str:
+        """Escape backticks in untrusted content so it can't hijack Micron formatting state."""
+        return str(text).replace("\\", "\\\\").replace("`", "\\`")
+
+    def _heading(self, text: str) -> str:
+        return f">{text}"
+
+    def _subheading(self, text: str) -> str:
+        return f">>{text}"
+
+    def _divider(self) -> str:
+        return "-"
+
     def _normalize(self, lines: list[str]) -> str:
         max_width = min(max(settings.nomadnet_line_limit, 72), 80)
         normalized: list[str] = []
@@ -359,15 +394,20 @@ class NomadNetRenderer:
             if not line:
                 normalized.append("")
                 continue
-            if self._is_micron_link(line):
+            if self._is_micron_link(line) or self._is_micron_markup(line):
                 normalized.append(line)
                 continue
+            if line.startswith(f"{_BULLET} "):
+                indent = " " * (len(_BULLET) + 1)
+            else:
+                indent = " " * (len(line) - len(line.lstrip(" ")))
             wrapped = textwrap.wrap(
-                line,
+                line.strip(),
                 width=max_width,
+                initial_indent="" if line.startswith(f"{_BULLET} ") else indent,
+                subsequent_indent=indent,
                 break_long_words=False,
                 break_on_hyphens=False,
-                replace_whitespace=False,
             )
             normalized.extend(wrapped or [""])
         return "\n".join(normalized[: settings.nomadnet_max_lines]).strip() + "\n"
@@ -380,6 +420,13 @@ class NomadNetRenderer:
             return brief
         return brief[:217].rstrip() + "..."
 
+    def _local_page_url(self, page_name: str) -> str:
+        return f":/page/phantom-aggregator/{str(page_name).lstrip('/')}"
+
     def _is_micron_link(self, line: str) -> bool:
-        stripped = line.lstrip()
-        return stripped.startswith("_`[") and stripped.endswith("]`_")
+        stripped = line.strip()
+        return stripped.startswith("`_`[") and stripped.endswith("]`_`")
+
+    def _is_micron_markup(self, line: str) -> bool:
+        stripped = line.strip()
+        return stripped.startswith(">") or stripped == "-"

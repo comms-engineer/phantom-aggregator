@@ -123,7 +123,7 @@
       "max_articles_per_feed": 5,
       "options": {
         "custom_fetcher": "app.fetchers.flooding_water:FloodingWaterFetcher",
-        "usgs_gauge_url": "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all&bBox=-125,24,-66,50&siteType=ST",
+        "usgs_gauge_url": "https://waterservices.usgs.gov/nwis/iv/?format=json&parameterCd=00065&siteStatus=all&stateCd=CA&siteType=ST",
         "flood_stage_ft": 10.0
       }
     },

@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:7b"
 
     nomadnet_line_limit: int = 80
-    nomadnet_max_lines: int = 80
+    nomadnet_max_lines: int = 240
 
     @property
     def project_root(self) -> Path:

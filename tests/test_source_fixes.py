@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.fetchers.fema_alerts import FemaAlertsFetcher
 from app.fetchers.space_weather import SpaceWeatherFetcher
+from app.renderers.nomadnet import NomadNetRenderer
 
 
 class SourceFixesTests(unittest.TestCase):
@@ -27,6 +28,17 @@ class SourceFixesTests(unittest.TestCase):
         )
         self.assertIn("siteType=ST", sources["flooding_water"]["options"]["usgs_gauge_url"])
         self.assertIn("IpawsArchivedAlerts", sources["fema_alerts"]["url"])
+
+    def test_nomadnet_index_uses_working_link_markers(self):
+        rendered = NomadNetRenderer().render_index([
+            ("emergencies.mu", "Emergencies"),
+            ("space.mu", "Space Weather"),
+        ])
+
+        self.assertIn(
+            "`_`[Emergencies`:/page/phantom-aggregator/emergencies.mu]`_`",
+            rendered,
+        )
 
     def test_space_weather_table_to_records_handles_legacy_and_modern_schema(self):
         fetcher = SpaceWeatherFetcher(
