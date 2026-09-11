@@ -18,6 +18,24 @@ from app.config import settings
 
 logger = logging.getLogger("phantom-aggregator.article_extractor")
 
+# File extensions that are never worth running HTML article extraction on.
+# Custom fetchers (FIRMS KMZ, future GDACS/ASAM/GhostMaps sources, etc.) may
+# put a non-HTML resource URL in an item's "link" field — trafilatura can't
+# parse a zip/binary as an article, and trying just wastes the per-source
+# extraction budget on a link that can never succeed.
+_NON_ARTICLE_EXTENSIONS = {
+    ".kmz", ".kml", ".zip", ".gz", ".tar",
+    ".pdf", ".csv", ".json", ".xml",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".mp3", ".mp4", ".wav",
+}
+
+
+def _looks_like_article_url(url: str) -> bool:
+    path = url.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+    suffix = Path(path).suffix.lower()
+    return suffix not in _NON_ARTICLE_EXTENSIONS
+
 
 def article_uid_for_url(url: str) -> str:
     digest = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:12]
@@ -32,6 +50,10 @@ def extract_full_article(url: str) -> dict[str, Any]:
         headers={"User-Agent": "phantom-aggregator/1.0"},
     )
     response.raise_for_status()
+
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type and not (content_type.startswith("text/") or "html" in content_type or "xml" in content_type):
+        raise ValueError(f"Refusing to run article extraction on non-text content-type '{content_type}' for {url}")
 
     extracted = trafilatura.bare_extraction(response.text, url=url, with_metadata=True)
     if extracted is None:
@@ -95,6 +117,10 @@ class ArticleExtractorService:
         for item in items:
             updated = dict(item)
             link = str(updated.get("link") or updated.get("url") or "").strip()
+            if link and not _looks_like_article_url(link):
+                logger.debug("Skipping non-article link for extraction: %s", link)
+                enriched.append(updated)
+                continue
             if link and extracted_count < max_articles:
                 article = await self._load_or_extract(link)
                 if article:
