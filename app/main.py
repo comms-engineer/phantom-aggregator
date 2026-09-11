@@ -126,11 +126,38 @@ def _build_fetcher(source: SourceDefinition) -> Any:
     return JsonApiFetcher(url=source.url, source_name=source.name, raw_dir=settings.raw_dir, name=source.id)
 
 
+def _build_digest_text(payload: dict[str, Any]) -> str:
+    """Build a plaintext digest for the LLM instead of dumping raw JSON.
+
+    Drops bulky/irrelevant keys (e.g. cyber_kev's full unfiltered "raw" catalog)
+    and renders the rest as `key: value` lines instead of JSON syntax, so the
+    character budget goes to actual content instead of braces/quotes/field names.
+    """
+    excluded_keys = {"raw"}
+    lines: list[str] = []
+    for key, value in payload.items():
+        if key in excluded_keys:
+            continue
+        if isinstance(value, list):
+            for i, item in enumerate(value):
+                if isinstance(item, dict):
+                    item_str = "; ".join(f"{k}={v}" for k, v in item.items())
+                    lines.append(f"{key}[{i}]: {item_str}")
+                else:
+                    lines.append(f"{key}[{i}]: {item}")
+        elif isinstance(value, dict):
+            item_str = "; ".join(f"{k}={v}" for k, v in value.items())
+            lines.append(f"{key}: {item_str}")
+        else:
+            lines.append(f"{key}: {value}")
+    return "\n".join(lines)
+
+
 async def _summarize_source(source: SourceDefinition, payload: dict[str, Any]) -> str:
-    raw_text = json.dumps(payload, ensure_ascii=False)
+    digest_text = _build_digest_text(payload)
     if source.llm_summarize:
-        return await llm_enricher.summarize_content(raw_text=raw_text, context_type=source.category)
-    return llm_enricher.fallback_text(raw_text)
+        return await llm_enricher.summarize_content(raw_text=digest_text, context_type=source.category)
+    return llm_enricher.fallback_text(digest_text)
 
 
 async def _refresh_source(source: SourceDefinition) -> dict[str, Any]:
