@@ -68,7 +68,7 @@ class WildfiresFetcher(BaseFetcher):
             feed_body, *firms_entries = await asyncio.gather(feed_task, *firms_tasks)
 
         incident_items = self._parse_feed(feed_body)
-        firms_items = [item for entry in firms_entries for item in self._build_firms_items(entry)]
+        firms_items = self._build_firms_items(list(firms_entries))
         items = self._correlate_and_dedupe(incident_items + firms_items)
         items.sort(key=self._sort_key, reverse=True)
 
@@ -114,28 +114,40 @@ class WildfiresFetcher(BaseFetcher):
         except Exception:
             return {"url": url, "sensor": self._sensor_name(url), "feature_count": 0, "error": "invalid_kmz"}
 
-    def _build_firms_items(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
-        if not isinstance(summary, dict):
+    def _build_firms_items(self, summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Combine all NASA FIRMS sensor summaries into a single item.
+
+        Landsat/NOAA-20/NOAA-21/S-NPP/MODIS each report a hotspot count for
+        the same 24h window over the same area of interest — showing them as
+        five near-identical rows just clutters the brief. One item with a
+        per-sensor breakdown carries the same information.
+        """
+        sensor_counts = [
+            (str(s.get("sensor") or "NASA FIRMS").strip(), int(s.get("feature_count", 0) or 0))
+            for s in summaries
+            if isinstance(s, dict) and int(s.get("feature_count", 0) or 0) > 0
+        ]
+        if not sensor_counts:
             return []
-        count = int(summary.get("feature_count", 0) or 0)
-        if count <= 0:
-            return []
-        sensor = str(summary.get("sensor") or "NASA FIRMS").strip()
-        severity = "critical" if count >= 100 else "high" if count >= 25 else "medium"
+
+        total = sum(count for _, count in sensor_counts)
+        severity = "critical" if total >= 500 else "high" if total >= 100 else "medium"
         rank = 6 if severity == "critical" else 5 if severity == "high" else 4
+        breakdown = ", ".join(f"{sensor}: {count}" for sensor, count in sensor_counts)
+
         return [{
-            "title": f"NASA FIRMS active fire detections ({sensor})",
+            "title": "NASA FIRMS active fire detections (all sensors)",
             "published": datetime.now(UTC).isoformat(),
             "source": "NASA FIRMS",
-            "link": str(summary.get("url", "")),
-            "body": f"{count} wildfire hotspot features were detected in the last 24 hours by {sensor}.",
-            "fire_name": sensor,
+            "link": "",
+            "body": f"{total} total wildfire hotspot features detected in the last 24 hours across sensors: {breakdown}.",
+            "fire_name": "multi-sensor",
             "event_type": "wildfire_hotspot",
             "severity": severity,
             "severity_rank": rank,
             "incident_group": "wildfire",
-            "firms_sensor": sensor,
-            "firms_hotspot_count": count,
+            "firms_sensor": "combined",
+            "firms_hotspot_count": total,
         }]
 
     def _sensor_name(self, url: str) -> str:
